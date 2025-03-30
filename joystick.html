@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Space Exploration</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/three@0.139.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.139.0/examples/js/controls/PointerLockControls.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow: hidden; /* Prevent scrollbars */
+        }
+        #gameCanvas {
+            width: 100%;
+            height: 100vh;
+            display: block; /* Removes extra space below canvas */
+            cursor: grab;  /* Show a grabbing cursor */
+            position: fixed; /* Make canvas fill the entire window */
+            top: 0;
+            left: 0;
+            z-index: 0;
+        }
+        #gameCanvas:active {
+            cursor: grabbing; /* Show a grabbing cursor when dragging */
+        }
+        #joystick {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background-color: rgba(100, 100, 100, 0.5); /* Semi-transparent grey */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none; /* Allows clicks to go through to canvas */
+            z-index: 1;
+        }
+        #joystick-center {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.7); /* Semi-transparent white */
+            pointer-events: none;
+        }
+        .hidden {
+            display: none;
+        }
+        #instructions {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            z-index: 1;
+            text-align: center;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <canvas id="gameCanvas"></canvas>
+    <div id="joystick" class="hidden">
+        <div id="joystick-center"></div>
+    </div>
+    <div id="instructions">
+        Click to activate controls and move with your mouse.  A joystick will appear on screen for movement.
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas });
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const joystickContainer = document.getElementById('joystick');
+        const joystickCenter = document.getElementById('joystick-center');
+        const instructionsElement = document.getElementById('instructions');
+
+        let isPointerLocked = false;
+        let moveForward = false;
+        let moveBackward = false;
+        let moveLeft = false;
+        let moveRight = false;
+        let sensitivity = 0.002;  // Reduced sensitivity, but not used for rotation anymore
+        let joystickActive = false;
+        let joystickOffsetX = 0;
+        let joystickOffsetY = 0;
+        const joystickMaxOffset = 50; // Maximum distance the joystick can move from center
+        let characterSpeed = 0.1; // Speed of character movement
+        let characterRotationY = 0; // Keep track of character's rotation, but not directly applied to camera
+
+        // Function to resize the renderer and update camera aspect ratio
+        function resizeRendererToDisplaySize(renderer) {
+            const canvas = renderer.domElement;
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+                renderer.setSize(width, height, false);
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+            }
+            return needResize;
+        }
+
+        resizeRendererToDisplaySize(renderer);
+
+        const geometry = new THREE.BoxGeometry(1, 1, 1);
+        const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        const cube = new THREE.Mesh(geometry, material);
+        scene.add(cube);
+
+        camera.position.z = 5;
+
+        // Create a grid for the scene
+        const gridHelper = new THREE.GridHelper(50, 50); // Size 50, 50 divisions
+        scene.add(gridHelper);
+
+        // Create a light for the scene.  This helps with shadows if you add them later.
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // soft white light
+        scene.add(ambientLight);
+
+        const pointLight = new THREE.PointLight(0xffffff, 1);
+        pointLight.position.set(0, 10, 0);
+        scene.add(pointLight);
+
+
+        const controls = new THREE.PointerLockControls(camera, renderer.domElement);
+        controls.addEventListener('lock', () => {
+            isPointerLocked = true;
+            joystickContainer.classList.remove('hidden');
+            instructionsElement.classList.add('hidden');
+            canvas.classList.add('grabbing');
+        });
+        controls.addEventListener('unlock', () => {
+            isPointerLocked = false;
+            joystickContainer.classList.add('hidden');
+            canvas.classList.remove('grabbing');
+        });
+
+        renderer.domElement.addEventListener('click', () => {
+            if (!isPointerLocked) {
+                controls.lock();
+            }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            switch (event.code) {
+                case 'KeyW':
+                case 'ArrowUp':
+                    moveForward = true;
+                    break;
+                case 'KeyS':
+                case 'ArrowDown':
+                    moveBackward = true;
+                    break;
+                case 'KeyA':
+                case 'ArrowLeft':
+                    moveLeft = true;
+                    break;
+                case 'KeyD':
+                case 'ArrowRight':
+                    moveRight = true;
+                    break;
+            }
+        });
+
+        document.addEventListener('keyup', (event) => {
+            switch (event.code) {
+                case 'KeyW':
+                case 'ArrowUp':
+                    moveForward = false;
+                    break;
+                case 'KeyS':
+                case 'ArrowDown':
+                    moveBackward = false;
+                    break;
+                case 'KeyA':
+                case 'ArrowLeft':
+                    moveLeft = false;
+                    break;
+                case 'KeyD':
+                case 'ArrowRight':
+                    moveRight = false;
+                    break;
+            }
+        });
+
+        // Touch event listeners for joystick emulation
+        joystickContainer.addEventListener('touchstart', (event) => {
+            event.preventDefault(); // Prevents additional mouse events
+            joystickActive = true;
+            const touch = event.touches[0];
+            const rect = joystickContainer.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            joystickOffsetX = touch.clientX - centerX;
+            joystickOffsetY = touch.clientY - centerY;
+        });
+
+        joystickContainer.addEventListener('touchmove', (event) => {
+            event.preventDefault();
+            if (!joystickActive) return;
+            const touch = event.touches[0];
+            const rect = joystickContainer.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            let x = touch.clientX - centerX;
+            let y = touch.clientY - centerY;
+
+             // Clamp the offset to the maximum radius
+            const distance = Math.sqrt(x * x + y * y);
+            if (distance > joystickMaxOffset) {
+                x = (x / distance) * joystickMaxOffset;
+                y = (y / distance) * joystickMaxOffset;
+            }
+
+            joystickOffsetX = x;
+            joystickOffsetY = y;
+
+            joystickCenter.style.transform = `translate(${x}px, ${y}px)`;
+        });
+
+        joystickContainer.addEventListener('touchend', (event) => {
+            event.preventDefault();
+            joystickActive = false;
+            joystickOffsetX = 0;
+            joystickOffsetY = 0;
+            joystickCenter.style.transform = 'translate(0px, 0px)';
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            resizeRendererToDisplaySize(renderer);
+
+            if (isPointerLocked) {
+                const velocity = characterSpeed; // Use characterSpeed
+                let forwardVelocity = 0;
+                let sideVelocity = 0;
+
+                if (moveForward) forwardVelocity += velocity;
+                if (moveBackward) forwardVelocity -= velocity;
+                if (moveLeft) sideVelocity += velocity;
+                if (moveRight) sideVelocity -= velocity;
+
+                // Apply joystick input
+                const joystickX = joystickOffsetX * 0.005; // Adjust for sensitivity
+                const joystickY = joystickOffsetY * 0.005;
+
+                forwardVelocity += joystickY * velocity; // Use joystick Y for forward/backward
+                sideVelocity += joystickX * velocity;    // Use joystick X for side movement
+
+                // Calculate the movement vector relative to the character's current rotation
+                const moveX = sideVelocity * Math.cos(characterRotationY) + forwardVelocity * Math.sin(characterRotationY);
+                const moveZ = forwardVelocity * Math.cos(characterRotationY) - sideVelocity * Math.sin(characterRotationY);
+
+                camera.position.x += moveX;
+                camera.position.z += moveZ;
+
+                // Update character rotation based on mouse movement, but do NOT apply to camera.rotation
+                const xMovement = event ? event.movementX || 0 : 0;
+                characterRotationY -= xMovement * sensitivity; // Use sensitivity here
+                //  camera.rotation.y = characterRotationY;  <-- REMOVED: Do not rotate camera
+                //  camera.rotation.x -= yMovement * sensitivity; <--- Removed, we don't want to rotate up and down.
+                //  camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x)); // Clamp vertical rotation  <-- Removed
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
