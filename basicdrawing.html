@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pixel Art Drawing</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+        }
+
+        canvas {
+            border: 1px solid #ccc;
+            cursor: crosshair;
+            background-color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="pixelCanvas" width="500" height="500"></canvas>
+    <script>
+        const canvas = document.getElementById('pixelCanvas');
+        const ctx = canvas.getContext('2d');
+        const pixelSize = 10;
+        let isDrawing = false;
+
+        function drawPixel(x, y) {
+            ctx.fillStyle = 'black';
+            ctx.fillRect(x, y, pixelSize, pixelSize);
+        }
+
+        function getMousePos(canvas, event) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: event.clientX - rect.left,
+                y: event.clientY - rect.top
+            };
+        }
+
+        function handleMouseClick(event) {
+            const mousePos = getMousePos(canvas, event);
+            const x = Math.floor(mousePos.x / pixelSize) * pixelSize;
+            const y = Math.floor(mousePos.y / pixelSize) * pixelSize;
+            drawPixel(x, y);
+        }
+
+        function handleMouseDown(event) {
+            isDrawing = true;
+            handleMouseClick(event); // Draw initial pixel
+        }
+
+        function handleMouseUp() {
+            isDrawing = false;
+        }
+
+        function handleMouseMove(event) {
+            if (isDrawing) {
+                const mousePos = getMousePos(canvas, event);
+                const x = Math.floor(mousePos.x / pixelSize) * pixelSize;
+                const y = Math.floor(mousePos.y / pixelSize) * pixelSize;
+                drawPixel(x, y);
+            }
+        }
+
+        canvas.addEventListener('mousedown', handleMouseDown);
+        canvas.addEventListener('mouseup', handleMouseUp);
+        canvas.addEventListener('mousemove', handleMouseMove);
+        canvas.addEventListener('click', handleMouseClick);
+    </script>
+</body>
+</html>
