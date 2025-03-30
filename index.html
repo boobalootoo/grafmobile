@@ -1,4 +1,4 @@
-Okay, let's modify the code to replace the WASD key controls with a virtual joystick.<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -6,7 +6,7 @@ Okay, let's modify the code to replace the WASD key controls with a virtual joys
     <title>3D Graffiti Game</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; position: relative; /* Make sure body is a positioning context */ }
+        body { margin: 0; overflow: hidden; }
         canvas { display: block; }
         #hand {
             position: absolute;
@@ -18,40 +18,54 @@ Okay, let's modify the code to replace the WASD key controls with a virtual joys
             left: 0;
             z-index: 10;
         }
+        .joystick-container {
+            position: absolute;
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background-color: #ddd;
+            touch-action: none;
+            /* Add these to position joysticks */
+            top: 80%; /* Position towards bottom */
+            left: 20%; /* First joystick on the left */
+            transform: translate(0, -50%); /* Center vertically relative to top */
+            z-index: 1000; /* Ensure the joysticks are above other elements */
+        }
+
+        .joystick-container:nth-of-type(2) {
+            left: 80%; /* Second joystick on the right */
+        }
+
+
         .joystick {
             position: absolute;
-            bottom: 20px;  /* Adjust as necessary */
-            left: 20px;    /* Adjust as necessary */
-            width: 100px;
-            height: 100px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50px;
+            height: 50px;
             border-radius: 50%;
-            background-color: rgba(100, 100, 100, 0.5); /* Semi-transparent grey */
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000; /* Ensure the joystick is above other elements */
+            background-color: #333;
         }
-
-        .joystick-handle {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            background-color: rgba(200, 200, 200, 0.7); /* Lighter semi-transparent grey */
-            cursor: grab;
-            position: relative; /* Important for positioning the handle */
+        #status {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            z-index: 1000;
         }
-
-        .joystick-handle:active {
-            cursor: grabbing;
-        }
-
     </style>
 </head>
 <body>
     <img id="hand" src="https://raw.githubusercontent.com/boobalootoo/HANDS/main/hand.png" alt="Hand" />
-    <div class="joystick" id="joystick">
-        <div class="joystick-handle" id="joystick-handle"></div>
+    <div id="joystick1-container" class="joystick-container">
+        <div id="joystick1" class="joystick"></div>
     </div>
+    <div id="joystick2-container" class="joystick-container">
+        <div id="joystick2" class="joystick"></div>
+    </div>
+    <div id="status">Joystick Status:</div>
     <script>
         let scene, camera, renderer;
         let player, wall, box;
@@ -88,13 +102,7 @@ Okay, let's modify the code to replace the WASD key controls with a virtual joys
         let lastHandPosition = { x: 0, y: 0 };  // To track hand movement
         let shakeTimeout;
         let isShaking = false; //track shaking state
-
-        //Joystick Variables
-        let joystick = null;
-        let joystickHandle = null;
-        let joystickCenter = { x: 0, y: 0 };
-        let isDraggingJoystick = false;
-        let joystickInput = { x: 0, y: 0 }; // Normalized input from joystick
+        let joystick1, joystick2; // Declare joystick variables
 
         // Sound Effects (Web Audio API)
         const soundFiles = {
@@ -232,11 +240,11 @@ Okay, let's modify the code to replace the WASD key controls with a virtual joys
             ];
 
             const indices = [
-                0, 1, 2, 2, 3, 0,      // Bottom
-                4, 5, 6, 6, 7, 4,      // Front
-                8, 9, 10, 10, 11, 8,    // Back
-                12, 13, 14, 14, 15, 12,  // Left
-                16, 17, 18, 18, 19, 16   // Right
+                0, 1, 2, 2, 3, 0,    // Bottom
+                4, 5, 6, 6, 7, 4,    // Front
+                8, 9, 10, 10, 11, 8, // Back
+                12, 13, 14, 14, 15, 12, // Left
+                16, 17, 18, 18, 19, 16  // Right
             ];
 
             openTopBoxGeometry.setIndex(indices);
@@ -287,33 +295,29 @@ Okay, let's modify the code to replace the WASD key controls with a virtual joys
                 cylinders.push(cylinder);
             }
 
-            // Get joystick elements
-            joystick = document.getElementById('joystick');
-            joystickHandle = document.getElementById('joystick-handle');
-            if (joystick && joystickHandle) {
-                // Store the center position of the joystick
-                const rect = joystick.getBoundingClientRect();
-                joystickCenter = {
-                    x: rect.left + rect.width / 2,
-                    y: rect.top + rect.height / 2
-                };
+            // Initialize joysticks
+            joystick1 = new JoystickController({
+                stickID: 'joystick1',
+                maxDistance: 70,
+                deadzone: 10,
+                container: document.getElementById('joystick1-container') // Pass the container element
+            });
 
-                 // Add touch listeners for mobile
-                joystickHandle.addEventListener('touchstart', handleJoystickStart, { passive: false });
-                joystickHandle.addEventListener('touchmove', handleJoystickMove, { passive: false });
-                joystickHandle.addEventListener('touchend', handleJoystickEnd, { passive: false });
-
-                // Add mouse listeners
-                joystickHandle.addEventListener('mousedown', handleJoystickStart);
-                joystickHandle.addEventListener('mousemove', handleJoystickMove);
-                joystickHandle.addEventListener('mouseup', handleJoystickEnd);
-                document.addEventListener('mouseup', handleJoystickEnd); //global
-            }
+            joystick2 = new JoystickController({
+                stickID: 'joystick2',
+                maxDistance: 70,
+                deadzone: 10,
+                container: document.getElementById('joystick2-container') // Pass the container element
+            });
 
 
             // Event Listeners
             document.addEventListener("keydown", (event) => {
                 switch (event.key) {
+                    case "w": moveForward = true; break;
+                    case "s": moveBackward = true; break;
+                    case "a": moveLeft = true; break;
+                    case "d": moveRight = true; break;
                     case "ArrowLeft": rotateLeft = true; break;
                     case "ArrowRight": rotateRight = true; break;
                     case "ArrowUp": rotateUp = true; break;
@@ -323,6 +327,10 @@ Okay, let's modify the code to replace the WASD key controls with a virtual joys
 
             document.addEventListener("keyup", (event) => {
                 switch (event.key) {
+                    case "w": moveForward = false; break;
+                    case "s": moveBackward = false; break;
+                    case "a": moveLeft = false; break;
+                    case "d": moveRight = false; break;
                     case "ArrowLeft": rotateLeft = false; break;
                     case "ArrowRight": rotateRight = false; break;
                     case "ArrowUp": rotateUp = false; break;
@@ -341,7 +349,7 @@ Okay, let's modify the code to replace the WASD key controls with a virtual joys
                 );
             });
 
-             document.addEventListener('mousedown', (e) => {
+            document.addEventListener('mousedown', (e) => {
                 if (e.button === 0) { // Left mouse button
                     isLeftMouseDown = true;
                     isDrawing = true;
@@ -385,102 +393,142 @@ Okay, let's modify the code to replace the WASD key controls with a virtual joys
             animate();
         }
 
-        function handlePickupOrDrop(event) {
-             if (pickedCylinder) {
-                pickedCylinder = null;
-                playSound('drop');
-                return;
+
+        class JoystickController {
+            constructor(options) {
+                this.stickID = options.stickID;
+                this.container = options.container;  // Use the container
+                this.maxDistance = options.maxDistance || 100;
+                this.deadzone = options.deadzone || 0;
+                this._init();
             }
 
-            mouse.set(
-                (event.clientX / window.innerWidth) * 2 - 1,
-                -(event.clientY / window.innerHeight) * 2 + 1
-            );
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects(cylinders);
+            _init() {
+                this.containerElement = this.container;
+                this.stickElement = document.createElement('div');
+                this.stickElement.classList.add('joystick');
+                this.containerElement.appendChild(this.stickElement);
 
-            if (intersects.length > 0) {
-                pickedCylinder = intersects[0].object;
-                playSound('capOff');
+                this.containerRect = this.containerElement.getBoundingClientRect();
+                this.stickRect = this.stickElement.getBoundingClientRect();
+
+                this.x = 0;
+                this.y = 0;
+                this.angle = 0;
+                this.distance = 0;
+                this.values = { x: 0, y: 0 };
+
+                this._bindEvents();
             }
-        }
 
-        function updateHandPosition(event) {
-            if (!event) return;
-            const currentHandPosition = { x: event.clientX, y: event.clientY };
-            const handSpeed = Math.sqrt(
-                Math.pow(currentHandPosition.x - lastHandPosition.x, 2) +
-                Math.pow(currentHandPosition.y - lastHandPosition.y, 2)
-            );
+            _bindEvents() {
+                this.containerElement.addEventListener('touchstart', this._handleStart.bind(this), { passive: false });
+                this.containerElement.addEventListener('touchmove', this._handleMove.bind(this), { passive: false });
+                this.containerElement.addEventListener('touchend', this._handleEnd.bind(this), { passive: false });
+                this.containerElement.addEventListener('mousedown', this._handleStart.bind(this), { passive: false });
+                this.containerElement.addEventListener('mousemove', this._handleMove.bind(this), { passive: false });
+                this.containerElement.addEventListener('mouseup', this._handleEnd.bind(this), { passive: false });
+                this.containerElement.addEventListener('mouseleave', this._handleEnd.bind(this), { passive: false }); // Add mouseleave
+            }
 
-            if (pickedCylinder && !isLeftMouseDown && handSpeed > 30) { // Increased sensitivity to 30
-                if (!isShaking) {
-                    isShaking = true;
-                    playShakingSound();
+            _handleStart(evt) {
+                evt.preventDefault();
+                this.startEvent = evt;
+                this.containerRect = this.containerElement.getBoundingClientRect(); // Update container rect
+                this.stickRect = this.stickElement.getBoundingClientRect();
+                if (evt.type === 'touchstart') {
+                    this.startX = evt.touches[0].clientX - this.containerRect.left;
+                    this.startY = evt.touches[0].clientY - this.containerRect.top;
+                } else {
+                    this.startX = evt.clientX - this.containerRect.left;
+                    this.startY = evt.clientY - this.containerRect.top;
                 }
-                // Clear timeout if it exists
-                if (shakeTimeout) {
-                    clearTimeout(shakeTimeout);
-                }
-                //reset last position
-                shakeTimeout = setTimeout(() => {
-                    lastHandPosition = {x: currentHandPosition.x, y: currentHandPosition.y};
-                    isShaking = false;
-                    playShakingSound();
-                }, 200);
 
-            }
-            else{
-                lastHandPosition = { x: event.clientX, y: event.clientY };
-                if(isShaking){
-                    isShaking = false;
-                    playShakingSound();
-                }
+                this._moveStick(this.startX, this.startY);
             }
 
+           _handleMove(evt) {
+                evt.preventDefault();
+                this.containerRect = this.containerElement.getBoundingClientRect(); // Update container rect
+                this.stickRect = this.stickElement.getBoundingClientRect();
+                let clientX, clientY;
+                if (evt.type === 'touchmove') {
+                    clientX = evt.touches[0].clientX - this.containerRect.left;
+                    clientY = evt.touches[0].clientY - this.containerRect.top;
+                } else {
+                    clientX = evt.clientX - this.containerRect.left;
+                    clientY = evt.clientY - this.containerRect.top;
+                }
+                this._moveStick(clientX, clientY);
+            }
 
-            handElement.style.left = `${event.clientX - handElement.offsetWidth / 2}px`;
-            handElement.style.top = `${event.clientY - handElement.offsetHeight / 2}px`;
+            _handleEnd(evt) {
+                evt.preventDefault();
+                this.x = 0;
+                this.y = 0;
+                this.angle = 0;
+                this.distance = 0;
+                this.values = { x: 0, y: 0 };
+                this.stickElement.style.transform = `translate(-50%, -50%)`;
+                this.stickElement.style.left = '50%';
+                this.stickElement.style.top = '50%';
+                document.getElementById('status').innerHTML = `Joystick ${this.stickID}: ${JSON.stringify(this.values)}`;
 
-            if (pickedCylinder) {
-                let vector = new THREE.Vector3(
-                    (event.clientX / window.innerWidth) * 2 - 1,
-                    -(event.clientY / window.innerHeight) * 2 + 1,
-                    0.5
-                );
-                vector.unproject(camera);
-                let dir = vector.sub(camera.position).normalize();
-                let distance = 2;
-                let newPos = camera.position.clone().add(dir.multiplyScalar(distance));
-                pickedCylinder.position.copy(newPos);
+            }
+
+            _moveStick(clientX, clientY) {
+                const deltaX = clientX - this.startX;
+                const deltaY = clientY - this.startY;
+                this.distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                this.angle = Math.atan2(deltaY, deltaX);
+
+                const ограниченныйDistance = Math.min(this.distance, this.maxDistance);
+                this.x = (ограниченныйDistance / this.maxDistance) * Math.cos(this.angle);
+                this.y = (ограниченныйDistance / this.maxDistance) * Math.sin(this.angle);
+
+                this.values.x = this.x;
+                this.values.y = this.y;
+
+                 if (this.distance > this.deadzone) {
+                    this.stickElement.style.left = `${50 + (ограниченныйDistance * Math.cos(this.angle))}px`;
+                    this.stickElement.style.top = `${50 + (ограниченныйDistance * Math.sin(this.angle))}px`;
+                } else {
+                    this.stickElement.style.left = `50%`;
+                    this.stickElement.style.top = `50%`;
+                }
+                document.getElementById('status').innerHTML = `Joystick ${this.stickID}: ${JSON.stringify(this.values)}`;
             }
         }
 
         function updatePlayerPosition() {
-            let speed = 0.1;
+             let speed = 0.1;
+            let joystickInput1 = joystick1.values;
+            let joystickInput2 = joystick2.values;
+
             velocity.set(0, 0, 0);
 
-            // Use joystick input
-            if (joystickInput.y > 0.1) velocity.z -= speed;  // Forward
-            if (joystickInput.y < -0.1) velocity.z += speed; // Backward
-            if (joystickInput.x < -0.1) velocity.x -= speed; // Left
-            if (joystickInput.x > 0.1) velocity.x += speed; // Right
+            // Combine joystick input and keyboard input
+            if (moveForward || joystickInput2.y < -0.2) velocity.z -= speed;
+            if (moveBackward || joystickInput2.y > 0.2) velocity.z += speed;
+            if (moveLeft || joystickInput2.x < -0.2) velocity.x -= speed;
+            if (moveRight || joystickInput2.x > 0.2) velocity.x += speed;
 
             direction.copy(velocity).normalize();
             player.position.add(direction.multiplyScalar(speed));
 
-            if (rotateLeft) {
+             if (rotateLeft || joystickInput1.x < -0.2) {
                 cameraRotationY += rotationSpeed;
             }
-            if (rotateRight) {
+            if (rotateRight || joystickInput1.x > 0.2) {
                 cameraRotationY -= rotationSpeed;
             }
-            if (rotateUp) {
+            if (rotateUp || joystickInput1.y < -0.2) {
                 cameraRotationX += rotationSpeed;
             }
-            if (rotateDown) {
+            if (rotateDown || joystickInput1.y > 0.2) {
                 cameraRotationX -= rotationSpeed;
             }
+
 
             player.rotation.y = cameraRotationY;
             cameraRotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraRotationX));
@@ -527,6 +575,57 @@ Okay, let's modify the code to replace the WASD key controls with a virtual joys
             sprayPoints.length = 0;
         }
 
+        function updateHandPosition(event) {
+            if (!event) return;
+            const currentHandPosition = { x: event.clientX, y: event.clientY };
+            const handSpeed = Math.sqrt(
+                Math.pow(currentHandPosition.x - lastHandPosition.x, 2) +
+                Math.pow(currentHandPosition.y - lastHandPosition.y, 2)
+            );
+
+            if (pickedCylinder && !isLeftMouseDown && handSpeed > 30) { // Increased sensitivity to 30
+                if (!isShaking) {
+                    isShaking = true;
+                    playShakingSound();
+                }
+                // Clear timeout if it exists
+                if (shakeTimeout) {
+                    clearTimeout(shakeTimeout);
+                }
+                //reset last position
+                shakeTimeout = setTimeout(() => {
+                    lastHandPosition = { x: currentHandPosition.x, y: currentHandPosition.y };
+                    isShaking = false;
+                    playShakingSound();
+                }, 200);
+
+            }
+            else {
+                lastHandPosition = { x: event.clientX, y: event.clientY };
+                if (isShaking) {
+                    isShaking = false;
+                    playShakingSound();
+                }
+            }
+
+
+            handElement.style.left = `${event.clientX - handElement.offsetWidth / 2}px`;
+            handElement.style.top = `${event.clientY - handElement.offsetHeight / 2}px`;
+
+            if (pickedCylinder) {
+                let vector = new THREE.Vector3(
+                    (event.clientX / window.innerWidth) * 2 - 1,
+                    -(event.clientY / window.innerHeight) * 2 + 1,
+                    0.5
+                );
+                vector.unproject(camera);
+                let dir = vector.sub(camera.position).normalize();
+                let distance = 2;
+                let newPos = camera.position.clone().add(dir.multiplyScalar(distance));
+                pickedCylinder.position.copy(newPos);
+            }
+        }
+
         function animate() {
             requestAnimationFrame(animate);
             updatePlayerPosition();
@@ -535,85 +634,7 @@ Okay, let's modify the code to replace the WASD key controls with a virtual joys
             renderer.render(scene, camera);
         }
 
-        function handleJoystickStart(event) {
-            event.preventDefault(); // Prevents additional mouse events
-            isDraggingJoystick = true;
-            if (event.changedTouches && event.changedTouches[0]) {
-                const touch = event.changedTouches[0];
-                 joystickHandle.style.left = `${touch.clientX - joystickHandle.offsetWidth / 2}px`;
-                 joystickHandle.style.top = `${touch.clientY - joystickHandle.offsetHeight / 2}px`;
-            }
-            else{
-                 joystickHandle.style.left = `${event.clientX - joystickHandle.offsetWidth / 2}px`;
-                 joystickHandle.style.top = `${event.clientY - joystickHandle.offsetHeight / 2}px`;
-            }
-
-        }
-
-       function handleJoystickMove(event) {
-            if (!isDraggingJoystick) return;
-
-            event.preventDefault(); // Prevent page scroll on mobile
-
-            let clientX, clientY;
-            if (event.changedTouches && event.changedTouches[0]) {
-                const touch = event.changedTouches[0];
-                clientX = touch.clientX;
-                clientY = touch.clientY;
-            } else {
-                clientX = event.clientX;
-                clientY = event.clientY;
-            }
-
-            const deltaX = clientX - joystickCenter.x;
-            const deltaY = clientY - joystickCenter.y;
-            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-            const maxDistance = 50; // Maximum distance the handle can move from the center
-
-            // Normalize the delta values to get a direction vector
-            let x = deltaX / distance;
-            let y = deltaY / distance;
-
-            // Clamp the distance to the maximum
-            if (distance > maxDistance) {
-                x *= maxDistance / distance;
-                y *= maxDistance / distance;
-            }
-
-            joystickInput.x = x / maxDistance;
-            joystickInput.y = y / maxDistance;
-
-            // Update handle position, clamping within the joystick bounds
-            const handleX = joystickCenter.x + x * maxDistance - joystickHandle.offsetWidth / 2;
-            const handleY = joystickCenter.y + y * maxDistance - joystickHandle.offsetHeight / 2;
-
-            joystickHandle.style.left = `${handleX}px`;
-            joystickHandle.style.top = `${handleY}px`;
-
-            // Update movement flags based on joystick input
-            moveForward = joystickInput.y < -0.1;
-            moveBackward = joystickInput.y > 0.1;
-            moveLeft = joystickInput.x < -0.1;
-            moveRight = joystickInput.x > 0.1;
-        }
-
-        function handleJoystickEnd(event) {
-            event.preventDefault();
-            isDraggingJoystick = false;
-            joystickInput.x = 0;
-            joystickInput.y = 0;
-            // Reset handle position to the center
-            joystickHandle.style.left = `${joystickCenter.x - joystickHandle.offsetWidth / 2}px`;
-            joystickHandle.style.top = `${joystickCenter.y - joystickHandle.offsetHeight / 2}px`;
-
-            // Reset movement flags
-            moveForward = false;
-            moveBackward = false;
-            moveLeft = false;
-            moveRight = false;
-        }
-
         init();
-    </script>
+</script>
 </body>
 </html>
